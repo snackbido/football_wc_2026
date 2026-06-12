@@ -1,3 +1,4 @@
+import { Request, Response } from 'express';
 import { Router } from "express";
 import { Match } from "../models/Match";
 import { User } from "../models/User";
@@ -7,7 +8,7 @@ import { getMatchHead2Head, getWcMatches, getMatchById } from "../services/axios
 const matchRouter = Router();
 
 // GET: /api/matches
-matchRouter.get("/", async (req, res) => {
+matchRouter.get("/", async (req: Request, res: Response) => {
   try {
     // const matches = await Match.find({}).sort({ matchTime: 1 });
     const matches = await getWcMatches();
@@ -18,9 +19,9 @@ matchRouter.get("/", async (req, res) => {
 });
 
 // GET: /api/matches/:id
-matchRouter.get("/:id", async (req, res) => {
+matchRouter.get("/:id", async (req: Request, res: Response) => {
   try {
-    const matchId = parseInt(req.params.id, 10);
+    const matchId = parseInt(req.params.id as string, 10);
     if (isNaN(matchId)) {
       return res.status(400).json({ status: "error", message: "ID trận đấu không hợp lệ" });
     }
@@ -51,9 +52,9 @@ matchRouter.get("/:id", async (req, res) => {
 });
 
 // POST: /api/matches/:id/bet
-matchRouter.post("/:id/bet", async (req, res) => {
+matchRouter.post("/:id/bet", async (req: Request, res: Response) => {
   try {
-    const matchId = req.params.id;
+    const matchId = req.params.id as string;
     const apiMatchId = parseInt(matchId, 10);
     if (isNaN(apiMatchId)) {
       return res.status(400).json({ status: "error", message: "ID trận đấu không hợp lệ" });
@@ -184,9 +185,9 @@ matchRouter.post("/:id/bet", async (req, res) => {
   }
 });
 
-matchRouter.get("/:id/ai-analyze", async (req, res) => {
+matchRouter.get("/:id/ai-analyze", async (req: Request, res: Response) => {
   try {
-    const matchId = req.params.id;
+    const matchId = req.params.id as string;
     const apiMatchId = parseInt(matchId, 10);
     if (isNaN(apiMatchId)) {
       return res.status(400).json({ status: "error", message: "ID trận đấu không hợp lệ" });
