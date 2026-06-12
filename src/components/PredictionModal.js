@@ -190,6 +190,7 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
         setDbMatchDetails(updatedMatch);
       }
       setShowConfirmOverlay(false);
+      setShowVotersList(false);
       setShowSuccessOverlay(true);
     } catch (err) {
       setShowConfirmOverlay(false);
@@ -756,7 +757,7 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
         {/* SUB-OVERLAY 2: SUCCESS OVERLAY */}
         {/* ============================================================== */}
         {showSuccessOverlay && (
-          <div className="absolute inset-0 bg-stone-55 z-30 flex items-center justify-center p-6 animate-fade-in">
+          <div className="absolute inset-0 bg-stone-50 z-30 flex items-center justify-center p-6 animate-fade-in">
             <div className="max-w-xs w-full text-center space-y-5">
               <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto border-2 border-emerald-200/30 animate-bounce">
                 <CheckCircle2 className="w-8 h-8 stroke-[2.5]" />

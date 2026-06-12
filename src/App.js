@@ -276,6 +276,11 @@ export default function App() {
         setPredictions(updatedPredictions);
         localStorage.setItem('wc2026_predictions', JSON.stringify(updatedPredictions));
         
+        // Hide other modals when voting is successful
+        setIsModalOpen(false);
+        setIsHistoryModalOpen(false);
+        setIsAuthModalOpen(false);
+        
         return updatedMatch;
       }
     } catch (err) {
