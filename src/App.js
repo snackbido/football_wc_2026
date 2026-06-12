@@ -192,11 +192,12 @@ export default function App() {
   };
 
   // Handle predictions submitted from the modal
-  const handleVoteSubmit = (matchId, supportedTeam, homeScore, awayScore) => {
+  const handleVoteSubmit = (matchId, supportedTeam, homeScore, awayScore, amount) => {
     const newPrediction = {
       supportedTeam,
       homeScore,
       awayScore,
+      amount,
       votedAt: new Date().toISOString()
     };
     const updatedPredictions = {

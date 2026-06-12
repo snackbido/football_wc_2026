@@ -98,33 +98,33 @@ export const STAGES = {
 
 export const MOCK_MATCHES = [
   // ==========================================
-  // NGÀY 12/06/2026
+  // NGÀY 11/06/2026 - Real API Data Sample
   // ==========================================
   {
-    id: 'm1',
+    id: 537327,
     stage: STAGES.GROUP,
-    group: 'Bảng A',
+    group: 'GROUP_A',
     homeTeam: 'mx',
     awayTeam: 'za',
-    date: '2026-06-12',
-    time: '02:00',
-    homeScore: null,
-    awayScore: null,
-    status: 'scheduled',
-    stadium: 'SVĐ Mexico City'
-  },
-  {
-    id: 'm2',
-    stage: STAGES.GROUP,
-    group: 'Bảng A',
-    homeTeam: 'kr',
-    awayTeam: 'cz',
-    date: '2026-06-12',
-    time: '09:00',
-    homeScore: null,
-    awayScore: null,
-    status: 'scheduled',
-    stadium: 'SVĐ Guadalajara'
+    date: '2026-06-11',
+    time: '19:00',
+    homeScore: 2,
+    awayScore: 0,
+    status: 'finished',
+    stadium: 'SVĐ Mexico City',
+    utcDate: '2026-06-11T19:00:00Z',
+    score: {
+      winner: 'HOME_TEAM',
+      duration: 'REGULAR',
+      fullTime: {
+        home: 2,
+        away: 0
+      },
+      halfTime: {
+        home: 1,
+        away: 0
+      }
+    }
   },
 
   // ==========================================
@@ -1541,4 +1541,159 @@ export const MOCK_MATCHES = [
 export const getFlagUrl = (flagCode) => {
   if (!flagCode) return '';
   return `https://flagcdn.com/w40/${flagCode.toLowerCase()}.png`;
+};
+
+export const getVotingStatus = (match) => {
+  if (!match) return 'locked';
+  if (match.status === 'finished' || match.status === 'live' || match.status === 'FINISHED') {
+    return 'locked';
+  }
+
+  const [year, month, day] = match.date.split('-').map(Number);
+  const [hour, minute] = match.time.split(':').map(Number);
+  const matchDate = new Date(year, month - 1, day, hour, minute, 0);
+  const now = new Date();
+  
+  const diffMs = matchDate.getTime() - now.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  
+  if (diffMs <= 2 * 60 * 1000) {
+    return 'locked'; // Locked starting 2 minutes before the match
+  }
+  if (diffHours > 12) {
+    return 'not_open'; // Opens only 12 hours before the match
+  }
+  return 'open';
+};
+
+// Transform API data to match the existing component structure
+export const transformApiDataToMatches = (apiData) => {
+  if (!apiData || !apiData.matches) return [];
+  
+  return apiData.matches.map((match) => {
+    // Map team names to team codes
+    const homeTeamCode = mapTeamNameToCode(match.homeTeam.name);
+    const awayTeamCode = mapTeamNameToCode(match.awayTeam.name);
+    
+    // Convert UTC date to local date and time
+    const utcDate = new Date(match.utcDate);
+    const localDate = utcDate.toISOString().split('T')[0];
+    const localTime = utcDate.toTimeString().split(' ')[0].substring(0, 5);
+    
+    // Map API status to component status
+    const status = match.status === 'FINISHED' ? 'finished' : 
+                   match.status === 'LIVE' ? 'live' : 'scheduled';
+    
+    // Map API stage to component stage
+    const stage = mapApiStageToComponentStage(match.stage);
+    
+    // Map API group to component group
+    const group = match.group ? mapApiGroupToComponentGroup(match.group) : null;
+    
+    return {
+      id: match.id,
+      stage: stage,
+      group: group,
+      homeTeam: homeTeamCode,
+      awayTeam: awayTeamCode,
+      date: localDate,
+      time: localTime,
+      homeScore: match.score?.fullTime?.home || null,
+      awayScore: match.score?.fullTime?.away || null,
+      status: status,
+      stadium: 'SVĐ World Cup', // Default stadium since API doesn't provide it
+      utcDate: match.utcDate,
+      score: match.score
+    };
+  });
+};
+
+// Helper function to map team names to team codes
+const mapTeamNameToCode = (teamName) => {
+  const teamMap = {
+    'Mexico': 'mx',
+    'South Africa': 'za',
+    'Hàn Quốc': 'kr',
+    'CH Séc': 'cz',
+    'Canada': 'ca',
+    'Thụy Sĩ': 'ch',
+    'Qatar': 'qa',
+    'Bosnia': 'ba',
+    'Brazil': 'br',
+    'Maroc': 'ma',
+    'Scotland': 'sct',
+    'Haiti': 'ht',
+    'Mỹ': 'us',
+    'Úc': 'au',
+    'Paraguay': 'py',
+    'Thổ Nhĩ Kỳ': 'tr',
+    'Đức': 'de',
+    'Ecuador': 'ec',
+    'Bờ Biển Ngà': 'ci',
+    'Curazao': 'cw',
+    'Hà Lan': 'nl',
+    'Nhật Bản': 'jp',
+    'Tunisia': 'tn',
+    'Thụy Điển': 'se',
+    'Bỉ': 'be',
+    'Iran': 'ir',
+    'Ai Cập': 'eg',
+    'New Zealand': 'nz',
+    'Tây Ban Nha': 'es',
+    'Uruguay': 'uy',
+    'Ả Rập Xê Út': 'sa',
+    'Cape Verde': 'cv',
+    'Pháp': 'fr',
+    'Senegal': 'sn',
+    'Na Uy': 'no',
+    'Iraq': 'iq',
+    'Argentina': 'ar',
+    'Áo': 'at',
+    'Algeria': 'dz',
+    'Jordan': 'jo',
+    'Bồ Đào Nha': 'pt',
+    'Colombia': 'co',
+    'Uzbekistan': 'uz',
+    'CHDC Congo': 'cd',
+    'Anh': 'eng',
+    'Croatia': 'hr',
+    'Panama': 'pa',
+    'Ghana': 'gh'
+  };
+  
+  return teamMap[teamName] || teamName.toLowerCase().replace(/\s+/g, '');
+};
+
+// Helper function to map API stage to component stage
+const mapApiStageToComponentStage = (apiStage) => {
+  const stageMap = {
+    'GROUP_STAGE': STAGES.GROUP,
+    'ROUND_OF_32': STAGES.ROUND_32,
+    'ROUND_OF_16': STAGES.ROUND_16,
+    'QUARTER_FINAL': STAGES.QUARTER,
+    'SEMI_FINAL': STAGES.SEMI,
+    'FINAL': STAGES.FINAL
+  };
+  
+  return stageMap[apiStage] || STAGES.GROUP;
+};
+
+// Helper function to map API group to component group
+const mapApiGroupToComponentGroup = (apiGroup) => {
+  const groupMap = {
+    'GROUP_A': 'Bảng A',
+    'GROUP_B': 'Bảng B',
+    'GROUP_C': 'Bảng C',
+    'GROUP_D': 'Bảng D',
+    'GROUP_E': 'Bảng E',
+    'GROUP_F': 'Bảng F',
+    'GROUP_G': 'Bảng G',
+    'GROUP_H': 'Bảng H',
+    'GROUP_I': 'Bảng I',
+    'GROUP_J': 'Bảng J',
+    'GROUP_K': 'Bảng K',
+    'GROUP_L': 'Bảng L'
+  };
+  
+  return groupMap[apiGroup] || apiGroup;
 };

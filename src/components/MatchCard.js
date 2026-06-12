@@ -1,5 +1,5 @@
 import React from 'react';
-import { TEAMS, getFlagUrl } from '../data';
+import { TEAMS, getFlagUrl, getVotingStatus } from '../data';
 
 // Helper component to render flag or soccer ball placeholder
 const FlagDisplay = ({ code, name }) => {
@@ -23,7 +23,8 @@ const FlagDisplay = ({ code, name }) => {
   );
 };
 
-export default function MatchCard({ match, realToday = '2026-06-11', prediction, onClick }) {
+export default function MatchCard({ match, realToday = '2026-06-12', prediction, onClick }) {
+  const votingStatus = getVotingStatus(match);
   const home = TEAMS[match.homeTeam] || { name: match.homeTeam, flagCode: '' };
   const away = TEAMS[match.awayTeam] || { name: match.awayTeam, flagCode: '' };
 
@@ -46,15 +47,20 @@ export default function MatchCard({ match, realToday = '2026-06-11', prediction,
     return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}`;
   };
 
-  const isFinished = match.status === 'finished';
+  const isFinished = match.status === 'finished' || match.status === 'FINISHED';
   const isLive = match.status === 'live';
   
   // A match displays score if it's finished, live, OR if the user has predicted it!
   const hasPrediction = !!prediction;
   const showScores = isFinished || isLive || hasPrediction;
   
-  const homeScore = isFinished || isLive ? match.homeScore : (hasPrediction ? prediction.homeScore : null);
-  const awayScore = isFinished || isLive ? match.awayScore : (hasPrediction ? prediction.awayScore : null);
+  // Get scores from match data (support both direct fields and nested score object)
+  const homeScore = isFinished || isLive 
+    ? (match.homeScore ?? match.score?.fullTime?.home) 
+    : (hasPrediction ? prediction.homeScore : null);
+  const awayScore = isFinished || isLive 
+    ? (match.awayScore ?? match.score?.fullTime?.away) 
+    : (hasPrediction ? prediction.awayScore : null);
 
   // Highlight winner style
   const homeWon = showScores && homeScore > awayScore;
@@ -72,6 +78,11 @@ export default function MatchCard({ match, realToday = '2026-06-11', prediction,
           <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold animate-pulse">
             <span className="w-1 h-1 rounded-full bg-white"></span>
             TRỰC TIẾP
+          </span>
+        )}
+        {isFinished && (
+          <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-stone-600 text-white text-[10px] font-bold">
+            Đã kết thúc
           </span>
         )}
       </div>
@@ -131,6 +142,11 @@ export default function MatchCard({ match, realToday = '2026-06-11', prediction,
               <span className="text-[10px] font-bold uppercase tracking-wider mb-1 px-2 py-0.5 rounded text-emerald-700 bg-emerald-50 border border-emerald-200/50">
                 Đã dự đoán
               </span>
+              {prediction.amount && (
+                <span className="text-[10px] text-[#2d382e] font-black font-display mb-0.5">
+                  {(prediction.amount / 1000)}kđ
+                </span>
+              )}
               <span className="text-[10px] text-stone-400 font-medium font-display truncate max-w-[85px]" title={match.stadium}>
                 {match.stadium.replace('SVĐ ', '')}
               </span>
@@ -153,6 +169,27 @@ export default function MatchCard({ match, realToday = '2026-06-11', prediction,
                 {match.stadium.replace('SVĐ ', '')}
               </span>
             </>
+          ) : votingStatus === 'locked' ? (
+            <>
+              <span className="text-[10px] font-bold uppercase tracking-wider mb-1 px-2 py-0.5 rounded text-stone-600 bg-stone-200/70 border border-stone-300/40">
+                Đã khóa bầu
+              </span>
+              <span className="text-[10px] text-stone-400 font-medium font-display truncate max-w-[85px]" title={match.stadium}>
+                {match.stadium.replace('SVĐ ', '')}
+              </span>
+            </>
+          ) : votingStatus === 'not_open' ? (
+            <>
+              <span className="text-xs font-semibold text-stone-500 tracking-wide mb-0.5 font-display">
+                {formatMatchDate(match.date)}
+              </span>
+              <span className="text-sm font-bold text-stone-900 font-display">
+                {match.time}
+              </span>
+              <span className="text-[8px] font-bold text-amber-600 uppercase tracking-widest mt-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/40">
+                Mở sau
+              </span>
+            </>
           ) : (
             <>
               <span className="text-xs font-semibold text-stone-500 tracking-wide mb-1 font-display">
@@ -160,6 +197,9 @@ export default function MatchCard({ match, realToday = '2026-06-11', prediction,
               </span>
               <span className="text-sm font-bold text-stone-950 font-display">
                 {match.time}
+              </span>
+              <span className="text-[8px] font-bold text-emerald-600 uppercase tracking-widest mt-1 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-250/30">
+                Đang mở
               </span>
             </>
           )}

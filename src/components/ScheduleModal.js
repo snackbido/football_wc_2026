@@ -1,11 +1,42 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, Calendar } from 'lucide-react';
-import { STAGES, MOCK_MATCHES, TEAMS } from '../data';
+import { STAGES, MOCK_MATCHES, TEAMS, transformApiDataToMatches } from '../data';
 import MatchCard from './MatchCard';
+import { getWorldCupMatches } from '../services/footballService';
 
 export default function ScheduleModal({ isOpen, onClose, realToday, predictions = {}, onMatchClick }) {
   const [activeStage, setActiveStage] = useState(STAGES.GROUP);
   const [searchQuery, setSearchQuery] = useState('');
+  const [matches, setMatches] = useState(MOCK_MATCHES);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Fetch real data from API when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      const fetchMatches = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const apiData = await getWorldCupMatches();
+          const transformedMatches = transformApiDataToMatches(apiData);
+          // If API returns data, use it; otherwise fall back to MOCK_MATCHES
+          if (transformedMatches.length > 0) {
+            setMatches(transformedMatches);
+          } else {
+            setMatches(MOCK_MATCHES);
+          }
+        } catch (err) {
+          console.error('Error fetching matches:', err);
+          setError('Failed to load match data');
+          setMatches(MOCK_MATCHES); // Fall back to mock data
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchMatches();
+    }
+  }, [isOpen]);
 
   // Get list of unique stages including Round of 32
   const stageList = [
@@ -19,7 +50,7 @@ export default function ScheduleModal({ isOpen, onClose, realToday, predictions 
 
   // Filter matches based on stage and search query
   const filteredMatches = useMemo(() => {
-    return MOCK_MATCHES.filter((match) => {
+    return matches.filter((match) => {
       const matchesStage = match.stage === activeStage;
       if (!matchesStage) return false;
 
@@ -32,7 +63,7 @@ export default function ScheduleModal({ isOpen, onClose, realToday, predictions 
       
       return home.includes(q) || away.includes(q) || grp.includes(q);
     });
-  }, [activeStage, searchQuery]);
+  }, [activeStage, searchQuery, matches]);
 
   // Group matches by Date for cleaner presentation
   const groupedMatches = useMemo(() => {
@@ -139,7 +170,18 @@ export default function ScheduleModal({ isOpen, onClose, realToday, predictions 
 
         {/* Matches list container (Scrollable) */}
         <div className="flex-1 overflow-y-auto px-6 py-6 bg-stone-50/50">
-          {filteredMatches.length === 0 ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-stone-400 text-center">
+              <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin mb-4"></div>
+              <p className="text-base font-semibold">Đang tải dữ liệu...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-20 text-stone-400 text-center">
+              <Calendar className="w-12 h-12 stroke-[1.25] mb-3 text-stone-300" />
+              <p className="text-base font-semibold text-red-500">{error}</p>
+              <p className="text-xs mt-1">Đang sử dụng dữ liệu mẫu</p>
+            </div>
+          ) : filteredMatches.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-stone-400 text-center">
               <Calendar className="w-12 h-12 stroke-[1.25] mb-3 text-stone-300" />
               <p className="text-base font-semibold">Không tìm thấy trận đấu nào</p>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, CheckCircle2, AlertTriangle, BarChart3, HelpCircle } from 'lucide-react';
-import { TEAMS, getFlagUrl } from '../data';
+import { TEAMS, getFlagUrl, getVotingStatus } from '../data';
 
 // Helper component to render flag or soccer ball placeholder
 const FlagDisplay = ({ code, name, sizeClass = "w-7 h-5" }) => {
@@ -28,6 +28,9 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [homeScoreInput, setHomeScoreInput] = useState('0'); // Default to 0
   const [awayScoreInput, setAwayScoreInput] = useState('0'); // Default to 0
+  const [voteAmount, setVoteAmount] = useState(10000);
+  const [customAmountInput, setCustomAmountInput] = useState('10000');
+  const [amountError, setAmountError] = useState('');
   const [showConfirmOverlay, setShowConfirmOverlay] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
 
@@ -37,12 +40,17 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
       setSelectedTeam(null);
       setHomeScoreInput('0'); // Reset default to 0
       setAwayScoreInput('0'); // Reset default to 0
+      setVoteAmount(10000);
+      setCustomAmountInput('10000');
+      setAmountError('');
       setShowConfirmOverlay(false);
       setShowSuccessOverlay(false);
     }
   }, [isOpen, match]);
 
   if (!isOpen || !match) return null;
+
+  const votingStatus = getVotingStatus(match);
 
   const home = TEAMS[match.homeTeam] || { name: match.homeTeam, flagCode: '' };
   const away = TEAMS[match.awayTeam] || { name: match.awayTeam, flagCode: '' };
@@ -52,9 +60,40 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
   const homePercent = totalVotes > 0 ? Math.round((votes.homeVotes / totalVotes) * 100) : 50;
   const awayPercent = 100 - homePercent;
 
+  const handleAmountChange = (val) => {
+    setCustomAmountInput(val);
+    const parsed = parseInt(val, 10);
+    if (isNaN(parsed)) {
+      setAmountError('Vui lòng nhập số tiền hợp lệ');
+      setVoteAmount(0);
+    } else if (parsed < 5000) {
+      setAmountError('Số tiền tối thiểu là 5.000đ');
+      setVoteAmount(parsed);
+    } else if (parsed > 50000) {
+      setAmountError('Số tiền tối đa là 50.000đ');
+      setVoteAmount(parsed);
+    } else {
+      setAmountError('');
+      setVoteAmount(parsed);
+    }
+  };
+
+  const handleQuickAmount = (amount) => {
+    setVoteAmount(amount);
+    setCustomAmountInput(amount.toString());
+    setAmountError('');
+  };
+
   const handleOpenConfirm = (e) => {
     e.preventDefault();
-    if (selectedTeam && homeScoreInput !== '' && awayScoreInput !== '') {
+    if (
+      selectedTeam &&
+      homeScoreInput !== '' &&
+      awayScoreInput !== '' &&
+      !amountError &&
+      voteAmount >= 5000 &&
+      voteAmount <= 50000
+    ) {
       setShowConfirmOverlay(true);
     }
   };
@@ -64,7 +103,8 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
       match.id,
       selectedTeam,
       parseInt(homeScoreInput, 10),
-      parseInt(awayScoreInput, 10)
+      parseInt(awayScoreInput, 10),
+      voteAmount
     );
     setShowConfirmOverlay(false);
     setShowSuccessOverlay(true);
@@ -111,9 +151,9 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
 
             {/* VS or Real Score */}
             <div className="flex flex-col items-center justify-center w-1/3">
-              {match.status === 'finished' ? (
+              {match.status === 'finished' || match.status === 'FINISHED' ? (
                 <div className="text-2xl font-black text-stone-900 font-display">
-                  {match.homeScore} - {match.awayScore}
+                  {match.homeScore ?? match.score?.fullTime?.home} - {match.awayScore ?? match.score?.fullTime?.away}
                 </div>
               ) : (
                 <div className="text-xs font-bold text-stone-400 uppercase tracking-widest bg-stone-100 px-3 py-1 rounded-full border border-stone-200/50">
@@ -162,6 +202,13 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
                     Dự đoán tỷ số: <span className="text-base text-[#2d382e]">{prediction.homeScore} - {prediction.awayScore}</span>
                   </div>
                 </div>
+
+                {prediction.amount && (
+                  <div className="flex items-center justify-between bg-white px-4 py-3 rounded-xl border border-stone-200/60 text-xs font-bold font-display">
+                    <span className="text-stone-500 font-medium">Số tiền đã bình chọn:</span>
+                    <span className="text-[#2d382e] font-extrabold text-sm">{prediction.amount.toLocaleString('vi-VN')} VND</span>
+                  </div>
+                )}
               </div>
 
               {/* Statistics & Progress Bar */}
@@ -210,9 +257,107 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
                 * Mỗi trận đấu chỉ được phép dự đoán một lần. Ý kiến của bạn đã được ghi nhận vào cơ sở dữ liệu chung.
               </p>
             </div>
+          ) : votingStatus === 'not_open' ? (
+            // ==============================================================
+            // CASE 2: NOT OPEN YET
+            // ==============================================================
+            <div className="space-y-6 animate-fade-in text-center py-6">
+              <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200 text-amber-500 flex items-center justify-center mx-auto shadow-sm">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              <div className="space-y-2.5 max-w-sm mx-auto">
+                <h4 className="text-base font-bold text-stone-900 font-display">Bình Chọn Chưa Mở</h4>
+                <p className="text-xs text-stone-500 leading-relaxed px-4">
+                  Bình chọn dự đoán tỷ số và ủng hộ đội tuyển chỉ được mở trong vòng <span className="font-bold text-stone-800">12 tiếng</span> trước khi trận đấu diễn ra.
+                </p>
+                <div className="p-4 bg-stone-50 border border-stone-200/60 rounded-2xl text-[11px] font-bold text-stone-700 font-display flex flex-col gap-1 mx-4">
+                  <span className="text-stone-400 font-medium">Thời gian thi đấu:</span>
+                  <span className="text-stone-800 text-sm font-black">{match.time} ngày {match.date.split('-').reverse().join('/')}</span>
+                  <span className="text-emerald-700 mt-1.5 uppercase tracking-wider text-[9px] block">
+                    Bình chọn sẽ tự động mở trước trận đấu 12 giờ
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2.5 bg-[#2d382e] hover:bg-stone-800 text-white text-xs font-bold rounded-xl shadow transition-colors font-display cursor-pointer"
+              >
+                Quay lại
+              </button>
+            </div>
+          ) : votingStatus === 'locked' ? (
+            // ==============================================================
+            // CASE 3: LOCKED (NOT VOTED & NOT ELIGIBLE ANYMORE)
+            // ==============================================================
+            <div className="space-y-6 animate-fade-in">
+              {/* Locked Notice */}
+              <div className="bg-red-50/50 p-4.5 rounded-2xl border border-red-200/50 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-red-100/60 border border-red-200 text-red-600 flex items-center justify-center mx-auto">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-base font-bold text-stone-950 font-display">Bình Chọn Đã Khóa</h4>
+                  <p className="text-xs text-stone-500 leading-relaxed px-2">
+                    Trận đấu đã chính thức khóa bình chọn (hệ thống tự động khóa 2 phút trước khi bắt đầu hoặc khi trận đấu đã diễn ra).
+                  </p>
+                </div>
+              </div>
+
+              {/* Statistics & Progress Bar */}
+              <div className="space-y-3.5 bg-white p-4.5 rounded-2xl border border-stone-200/80 shadow-sm">
+                <div className="flex items-center space-x-2 text-stone-800 font-bold text-sm">
+                  <BarChart3 className="w-4 h-4 text-[#2d382e]" />
+                  <span className="font-display">Thống kê bình chọn toàn thế giới</span>
+                </div>
+
+                {/* Progress labels */}
+                <div className="flex justify-between items-end text-xs font-bold font-display mt-2">
+                  <div className="flex items-center space-x-1.5 text-emerald-600">
+                    <FlagDisplay code={home.flagCode} name={home.name} sizeClass="w-5 h-3.5" />
+                    <span>{home.name}: {homePercent}%</span>
+                  </div>
+                  <div className="flex items-center space-x-1.5 text-amber-500">
+                    <span>{awayPercent}%: {away.name}</span>
+                    <FlagDisplay code={away.flagCode} name={away.name} sizeClass="w-5 h-3.5" />
+                  </div>
+                </div>
+
+                {/* Dual-colored progress bar */}
+                <div className="w-full h-3.5 bg-stone-100 rounded-full flex overflow-hidden border border-stone-200/40">
+                  <div 
+                    style={{ width: `${homePercent}%` }}
+                    className="bg-emerald-600 transition-all duration-500 h-full relative"
+                    title={`${home.name}: ${homePercent}%`}
+                  ></div>
+                  <div 
+                    style={{ width: `${awayPercent}%` }}
+                    className="bg-amber-500 transition-all duration-500 h-full relative"
+                    title={`${away.name}: ${awayPercent}%`}
+                  ></div>
+                </div>
+
+                {/* Total votes */}
+                <div className="flex justify-between text-[10px] text-stone-400 font-semibold px-0.5">
+                  <span>{votes ? votes.homeVotes : 0} lượt bầu</span>
+                  <span>Tổng cộng: {totalVotes} lượt bình chọn</span>
+                  <span>{votes ? votes.awayVotes : 0} lượt bầu</span>
+                </div>
+              </div>
+
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 bg-[#2d382e] hover:bg-stone-800 text-white text-xs font-bold rounded-xl shadow transition-colors font-display cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
           ) : (
             // ==============================================================
-            // CASE 2: NOT VOTED YET (SHOW VOTING FORM)
+            // CASE 4: NOT VOTED YET & OPEN (SHOW VOTING FORM)
             // ==============================================================
             <form onSubmit={handleOpenConfirm} className="space-y-6 animate-fade-in">
               {/* Select Supported Team */}
@@ -227,7 +372,7 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
                   <button
                     type="button"
                     onClick={() => setSelectedTeam('home')}
-                    className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 bg-white shadow-sm text-center ${
+                    className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 bg-white shadow-sm text-center cursor-pointer ${
                       selectedTeam === 'home'
                         ? 'border-[#c29b38] bg-[#f7f5f0] ring-4 ring-[#c29b38]/10'
                         : 'border-stone-200/80 hover:border-stone-300 hover:bg-stone-50'
@@ -244,7 +389,7 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
                   <button
                     type="button"
                     onClick={() => setSelectedTeam('away')}
-                    className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 bg-white shadow-sm text-center ${
+                    className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 bg-white shadow-sm text-center cursor-pointer ${
                       selectedTeam === 'away'
                         ? 'border-[#c29b38] bg-[#f7f5f0] ring-4 ring-[#c29b38]/10'
                         : 'border-stone-200/80 hover:border-stone-300 hover:bg-stone-50'
@@ -254,49 +399,114 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
                     <span className="text-sm font-bold text-stone-800 font-display mt-2 leading-tight">
                       {away.name}
                     </span>
-                    <span className="text-[10px] text-stone-400 mt-1 uppercase font-bold tracking-wider">Đội khách</span>
+                     <span className="text-[10px] text-stone-400 mt-1 uppercase font-bold tracking-wider">Đội khách</span>
                   </button>
                 </div>
               </div>
 
-              {/* Enter Predicted Score (Appears after team selection) */}
               {selectedTeam && (
-                <div className="space-y-3 animate-fade-in">
-                  <span className="text-xs font-bold text-stone-500 uppercase tracking-wider pl-0.5">
-                    Nhập tỷ số dự đoán của bạn
-                  </span>
+                <div className="space-y-4 animate-fade-in">
+                  <div className="space-y-3">
+                    <span className="text-xs font-bold text-stone-500 uppercase tracking-wider pl-0.5">
+                      Nhập tỷ số dự đoán của bạn
+                    </span>
 
-                  <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-sm flex items-center justify-center space-x-6">
-                    {/* Home Score Input */}
-                    <div className="flex items-center space-x-3">
-                      <FlagDisplay code={home.flagCode} name={home.name} sizeClass="w-6 h-4" />
-                      <input
-                        type="number"
-                        min="0"
-                        max="99"
-                        placeholder="0"
-                        value={homeScoreInput}
-                        onChange={(e) => setHomeScoreInput(e.target.value.replace(/\D/g, ''))}
-                        required
-                        className="w-12 h-12 text-center text-xl font-bold bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] focus:bg-white transition-all font-display"
-                      />
+                    <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-sm flex items-center justify-center space-x-6">
+                      {/* Home Score Input */}
+                      <div className="flex items-center space-x-3">
+                        <FlagDisplay code={home.flagCode} name={home.name} sizeClass="w-6 h-4" />
+                        <input
+                          type="number"
+                          min="0"
+                          max="99"
+                          placeholder="0"
+                          value={homeScoreInput}
+                          onChange={(e) => setHomeScoreInput(e.target.value.replace(/\D/g, ''))}
+                          required
+                          className="w-12 h-12 text-center text-xl font-bold bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] focus:bg-white transition-all font-display"
+                        />
+                      </div>
+
+                      <div className="text-lg font-bold text-stone-400 font-display">:</div>
+
+                      {/* Away Score Input */}
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="number"
+                          min="0"
+                          max="99"
+                          placeholder="0"
+                          value={awayScoreInput}
+                          onChange={(e) => setAwayScoreInput(e.target.value.replace(/\D/g, ''))}
+                          required
+                          className="w-12 h-12 text-center text-xl font-bold bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] focus:bg-white transition-all font-display"
+                        />
+                        <FlagDisplay code={away.flagCode} name={away.name} sizeClass="w-6 h-4" />
+                      </div>
                     </div>
+                  </div>
 
-                    <div className="text-lg font-bold text-stone-400 font-display">:</div>
+                  {/* Select Voting Amount */}
+                  <div className="space-y-3 pt-1">
+                    <span className="text-xs font-bold text-stone-500 uppercase tracking-wider pl-0.5 flex justify-between items-center">
+                      <span>Chọn số tiền bình chọn</span>
+                      <span className="text-[10px] text-stone-400 font-semibold normal-case">
+                        Giới hạn: 5.000đ - 50.000đ
+                      </span>
+                    </span>
 
-                    {/* Away Score Input */}
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="number"
-                        min="0"
-                        max="99"
-                        placeholder="0"
-                        value={awayScoreInput}
-                        onChange={(e) => setAwayScoreInput(e.target.value.replace(/\D/g, ''))}
-                        required
-                        className="w-12 h-12 text-center text-xl font-bold bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] focus:bg-white transition-all font-display"
-                      />
-                      <FlagDisplay code={away.flagCode} name={away.name} sizeClass="w-6 h-4" />
+                    <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-sm space-y-4">
+                      {/* Quick select buttons */}
+                      <div className="grid grid-cols-4 gap-2">
+                        {[5000, 10000, 20000, 50000].map((amt) => {
+                          const isSelected = voteAmount === amt && !amountError;
+                          return (
+                            <button
+                              key={amt}
+                              type="button"
+                              onClick={() => handleQuickAmount(amt)}
+                              className={`py-2 px-1 rounded-xl text-xs font-bold border transition-all duration-200 cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#2d382e] text-[#c29b38] border-[#2d382e] ring-2 ring-[#c29b38]/20 shadow-sm'
+                                  : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100 hover:text-stone-800'
+                              }`}
+                            >
+                              {(amt / 1000)}kđ
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Custom input */}
+                      <div className="space-y-1.5">
+                        <div className="relative flex items-center">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            placeholder="Nhập số tiền..."
+                            value={customAmountInput}
+                            onChange={(e) => handleAmountChange(e.target.value.replace(/\D/g, ''))}
+                            className={`w-full px-4 py-2.5 bg-stone-50 border rounded-xl font-bold font-display text-sm focus:outline-none focus:bg-white transition-all ${
+                              amountError
+                                ? 'border-red-350 focus:ring-2 focus:ring-red-200'
+                                : 'border-stone-200 focus:ring-2 focus:ring-[#2d382e]/20'
+                            }`}
+                          />
+                          <span className="absolute right-4 font-bold text-xs text-stone-400 uppercase">
+                            VND
+                          </span>
+                        </div>
+                        {amountError ? (
+                          <p className="text-[10px] text-red-500 font-bold flex items-center gap-1 pl-1">
+                            ⚠️ {amountError}
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-stone-400 font-medium pl-1">
+                            * Mệnh giá tối thiểu: 5.000 VND, tối đa: 50.000 VND.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -305,8 +515,8 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={!selectedTeam || homeScoreInput === '' || awayScoreInput === ''}
-                className="w-full py-3 px-4 bg-[#2d382e] text-[#c29b38] hover:bg-[#202720] disabled:bg-stone-200 disabled:text-stone-400 font-bold rounded-2xl shadow transition-all duration-200 font-display text-sm uppercase tracking-wider"
+                disabled={!selectedTeam || homeScoreInput === '' || awayScoreInput === '' || !!amountError || voteAmount < 5000 || voteAmount > 50000}
+                className="w-full py-3 px-4 bg-[#2d382e] text-[#c29b38] hover:bg-[#202720] disabled:bg-stone-200 disabled:text-stone-400 font-bold rounded-2xl shadow transition-all duration-200 font-display text-sm uppercase tracking-wider cursor-pointer"
               >
                 Xác nhận dự đoán
               </button>
@@ -323,12 +533,18 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
               <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 text-amber-500 flex items-center justify-center mx-auto">
                 <AlertTriangle className="w-6 h-6" />
               </div>
-              <div className="space-y-2">
-                <h4 className="text-lg font-bold text-stone-900 font-display">Xác Nhận Bình Chọn?</h4>
-                <p className="text-xs text-stone-500 leading-relaxed">
+              <div className="space-y-3 text-left">
+                <h4 className="text-lg font-bold text-stone-900 font-display text-center">Xác Nhận Bình Chọn?</h4>
+                <p className="text-xs text-stone-500 leading-relaxed text-center">
                   Bạn đang bình chọn ủng hộ <span className="font-bold text-stone-800">{selectedTeam === 'home' ? home.name : away.name}</span> với tỷ số dự đoán <span className="font-bold text-stone-800">{homeScoreInput} - {awayScoreInput}</span>.
                 </p>
-                <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200/50 p-2 rounded-xl font-bold uppercase tracking-wide">
+                
+                <div className="bg-[#f7f5f0] border border-[#ebdcd0] rounded-xl p-3 flex justify-between items-center text-xs font-bold text-stone-700 font-display">
+                  <span className="text-stone-500 font-medium">Số tiền bình chọn:</span>
+                  <span className="text-[#2d382e] font-extrabold text-sm">{voteAmount.toLocaleString('vi-VN')} VND</span>
+                </div>
+
+                <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200/50 p-2.5 rounded-xl font-bold uppercase tracking-wide text-center">
                   ⚠️ Sau khi xác nhận, bạn không thể sửa đổi kết quả!
                 </p>
               </div>
