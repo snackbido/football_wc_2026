@@ -5,6 +5,7 @@ import MatchCard from './components/MatchCard';
 import ScheduleModal from './components/ScheduleModal';
 import PredictionModal from './components/PredictionModal';
 import AuthModal from './components/AuthModal';
+import VoteHistoryModal from './components/VoteHistoryModal';
 import { getWorldCupMatches, placeMatchBet } from './services/footballService';
 import { getUserBets } from './services/userService';
 
@@ -23,6 +24,7 @@ export default function App() {
   // Modal visibility states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [activePredictMatchId, setActivePredictMatchId] = useState(null);
   const [pendingMatchId, setPendingMatchId] = useState(null); // Stores match card clicked before verification
 
@@ -413,18 +415,24 @@ export default function App() {
             <div className="flex items-center bg-[#212921] rounded-2xl px-3.5 py-1.5 border border-stone-700/60 shadow-inner">
               {currentUser ? (
                 <div className="flex items-center space-x-2.5">
-                  <img 
-                    src={currentUser.avatar || currentUser.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.name)}`} 
-                    alt={currentUser.name} 
-                    className="w-7 h-7 rounded-full object-cover border border-[#c29b38] shadow-sm bg-stone-100" 
-                  />
-                  <div className="flex flex-col text-left">
-                    <span className="text-xs font-bold text-white font-display truncate max-w-[100px]">
-                      {currentUser.name}
-                    </span>
-                    <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest leading-none mt-0.5">
-                      Đã xác thực
-                    </span>
+                  <div 
+                    onClick={() => setIsHistoryModalOpen(true)}
+                    className="flex items-center space-x-2.5 cursor-pointer hover:opacity-85 transition-opacity"
+                    title="Xem lịch sử bình chọn"
+                  >
+                    <img 
+                      src={currentUser.avatar || currentUser.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.name)}`} 
+                      alt={currentUser.name} 
+                      className="w-7 h-7 rounded-full object-cover border border-[#c29b38] shadow-sm bg-stone-100" 
+                    />
+                    <div className="flex flex-col text-left">
+                      <span className="text-xs font-bold text-white font-display truncate max-w-[100px]">
+                        {currentUser.name}
+                      </span>
+                      <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest leading-none mt-0.5">
+                        Đã xác thực
+                      </span>
+                    </div>
                   </div>
                   <button 
                     onClick={handleLogout}
@@ -711,6 +719,15 @@ export default function App() {
           setPendingMatchId(null);
         }}
         onVerifySuccess={handleVerifySuccess}
+      />
+
+      {/* User Vote History Modal Popup */}
+      <VoteHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        predictions={predictions}
+        matches={matches}
+        onMatchClick={handleMatchCardClick}
       />
     </div>
   );

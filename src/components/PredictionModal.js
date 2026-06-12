@@ -505,7 +505,7 @@ export default function PredictionModal({ isOpen, onClose, match, prediction, vo
               <div className="space-y-1.5 max-w-sm mx-auto">
                 <h4 className="text-sm font-bold text-stone-900 font-display">Bình Chọn Chưa Mở</h4>
                 <p className="text-[11px] text-stone-550 leading-relaxed">
-                  Bình chọn dự đoán tỷ số và ủng hộ đội tuyển chỉ mở trong vòng <span className="font-bold text-stone-800">12 tiếng</span> trước khi trận đấu diễn ra.
+                  Bình chọn dự đoán tỷ số và ủng hộ đội tuyển chỉ mở trong vòng <span className="font-bold text-stone-800">24 tiếng</span> trước khi trận đấu diễn ra.
                 </p>
                 <div className="p-3.5 bg-white border border-stone-200/40 rounded-xl text-[10px] font-bold text-stone-700 font-display flex flex-col gap-0.5 mt-2">
                   <span className="text-stone-400 font-medium">Thời gian thi đấu:</span>

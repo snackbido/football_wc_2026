@@ -76,8 +76,8 @@ export const getVotingStatus = (match) => {
   if (diffMs <= 2 * 60 * 1000) {
     return 'locked'; // Locked starting 2 minutes before the match
   }
-  if (diffHours > 12) {
-    return 'not_open'; // Opens only 12 hours before the match
+  if (diffHours > 24) {
+    return 'not_open'; // Opens only 24 hours before the match
   }
   return 'open';
 };
