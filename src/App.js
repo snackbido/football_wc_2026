@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Trophy, Calendar, Sparkles, ChevronLeft, ChevronRight, ListOrdered, RotateCcw, LogOut } from 'lucide-react';
+import { Trophy, Calendar, Sparkles, ChevronLeft, ChevronRight, ListOrdered, LogOut } from 'lucide-react';
 import { getVnDateTime } from './data';
 import MatchCard from './components/MatchCard';
 import ScheduleModal from './components/ScheduleModal';
@@ -284,22 +284,22 @@ export default function App() {
   };
 
   // Reset predictions and vote pool to default state
-  const handleResetSimulation = () => {
-    setPredictions({});
-    localStorage.removeItem('wc2026_predictions');
+  // const handleResetSimulation = () => {
+  //   setPredictions({});
+  //   localStorage.removeItem('wc2026_predictions');
 
-    const initialVotes = {};
-    matches.forEach(m => {
-      const homeBase = Math.floor(Math.random() * 190) + 60;
-      const awayBase = Math.floor(Math.random() * 190) + 60;
-      initialVotes[m.id] = {
-        homeVotes: homeBase,
-        awayVotes: awayBase
-      };
-    });
-    setMatchVotes(initialVotes);
-    localStorage.setItem('wc2026_match_votes', JSON.stringify(initialVotes));
-  };
+  //   const initialVotes = {};
+  //   matches.forEach(m => {
+  //     const homeBase = Math.floor(Math.random() * 190) + 60;
+  //     const awayBase = Math.floor(Math.random() * 190) + 60;
+  //     initialVotes[m.id] = {
+  //       homeVotes: homeBase,
+  //       awayVotes: awayBase
+  //     };
+  //   });
+  //   setMatchVotes(initialVotes);
+  //   localStorage.setItem('wc2026_match_votes', JSON.stringify(initialVotes));
+  // };
 
   // Currently selected match object for the prediction modal
   const activePredictMatch = useMemo(() => {
