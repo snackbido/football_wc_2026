@@ -1,42 +1,20 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Search, Calendar } from 'lucide-react';
-import { STAGES, MOCK_MATCHES, TEAMS, transformApiDataToMatches } from '../data';
+import { STAGES, getVnDateTime, mapStageToVn, mapGroupToVn } from '../data';
 import MatchCard from './MatchCard';
-import { getWorldCupMatches } from '../services/footballService';
 
-export default function ScheduleModal({ isOpen, onClose, realToday, predictions = {}, onMatchClick }) {
+export default function ScheduleModal({ 
+  isOpen, 
+  onClose, 
+  realToday, 
+  predictions = {}, 
+  onMatchClick,
+  matches = [],
+  loading = false,
+  error = null
+}) {
   const [activeStage, setActiveStage] = useState(STAGES.GROUP);
   const [searchQuery, setSearchQuery] = useState('');
-  const [matches, setMatches] = useState(MOCK_MATCHES);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  // Fetch real data from API when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      const fetchMatches = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-          const apiData = await getWorldCupMatches();
-          const transformedMatches = transformApiDataToMatches(apiData);
-          // If API returns data, use it; otherwise fall back to MOCK_MATCHES
-          if (transformedMatches.length > 0) {
-            setMatches(transformedMatches);
-          } else {
-            setMatches(MOCK_MATCHES);
-          }
-        } catch (err) {
-          console.error('Error fetching matches:', err);
-          setError('Failed to load match data');
-          setMatches(MOCK_MATCHES); // Fall back to mock data
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchMatches();
-    }
-  }, [isOpen]);
 
   // Get list of unique stages including Round of 32
   const stageList = [
@@ -57,9 +35,9 @@ export default function ScheduleModal({ isOpen, onClose, realToday, predictions 
       if (!searchQuery) return true;
 
       const q = searchQuery.toLowerCase().trim();
-      const home = TEAMS[match.homeTeam]?.name.toLowerCase() || match.homeTeam.toLowerCase();
-      const away = TEAMS[match.awayTeam]?.name.toLowerCase() || match.awayTeam.toLowerCase();
-      const grp = match.group?.toLowerCase() || '';
+      const home = match.homeTeam?.name.toLowerCase() || '';
+      const away = match.awayTeam?.name.toLowerCase() || '';
+      const grp = match.group ? mapGroupToVn(match.group).toLowerCase() : '';
       
       return home.includes(q) || away.includes(q) || grp.includes(q);
     });
@@ -69,15 +47,17 @@ export default function ScheduleModal({ isOpen, onClose, realToday, predictions 
   const groupedMatches = useMemo(() => {
     const groups = {};
     filteredMatches.forEach((match) => {
-      if (!groups[match.date]) {
-        groups[match.date] = [];
+      const { date } = getVnDateTime(match.utcDate);
+      if (!groups[date]) {
+        groups[date] = [];
       }
-      groups[match.date].push(match);
+      groups[date].push(match);
     });
     return groups;
   }, [filteredMatches]);
 
   const formatDateHeader = (dateString) => {
+    if (!dateString) return '';
     const [year, month, day] = dateString.split('-').map(Number);
     const dateObj = new Date(year, month - 1, day);
     
@@ -142,7 +122,7 @@ export default function ScheduleModal({ isOpen, onClose, realToday, predictions 
                     : 'bg-stone-100 text-stone-600 hover:bg-stone-200/80 hover:text-stone-900'
                 }`}
               >
-                {stage}
+                {mapStageToVn(stage)}
               </button>
             ))}
           </div>
@@ -179,7 +159,6 @@ export default function ScheduleModal({ isOpen, onClose, realToday, predictions 
             <div className="flex flex-col items-center justify-center py-20 text-stone-400 text-center">
               <Calendar className="w-12 h-12 stroke-[1.25] mb-3 text-stone-300" />
               <p className="text-base font-semibold text-red-500">{error}</p>
-              <p className="text-xs mt-1">Đang sử dụng dữ liệu mẫu</p>
             </div>
           ) : filteredMatches.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-stone-400 text-center">

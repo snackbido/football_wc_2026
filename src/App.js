@@ -1,14 +1,22 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Trophy, Calendar, Sparkles, ChevronLeft, ChevronRight, ListOrdered, RotateCcw, LogOut } from 'lucide-react';
-import { MOCK_MATCHES, TEAMS, GROUPS, STAGES } from './data';
+import { getVnDateTime } from './data';
 import MatchCard from './components/MatchCard';
 import ScheduleModal from './components/ScheduleModal';
 import PredictionModal from './components/PredictionModal';
 import AuthModal from './components/AuthModal';
-import MockEmailInbox from './components/MockEmailInbox';
+import { getWorldCupMatches, placeMatchBet } from './services/footballService';
+import { getUserBets } from './services/userService';
+
+const GROUPS_LIST = [
+  'Bảng A', 'Bảng B', 'Bảng C', 'Bảng D', 'Bảng E', 'Bảng F',
+  'Bảng G', 'Bảng H', 'Bảng I', 'Bảng J', 'Bảng K', 'Bảng L'
+];
 
 export default function App() {
-  const [matches] = useState(MOCK_MATCHES);
+  const [matches, setMatches] = useState([]);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+  const [errorMatches, setErrorMatches] = useState(null);
   const [selectedDate, setSelectedDate] = useState('2026-06-12'); // Start directly on June 12, 2026
   const scrollContainerRef = useRef(null);
 
@@ -30,16 +38,9 @@ export default function App() {
   }, []);
 
   // Authentication State
-  const [currentUser, setCurrentUser] = useState(null); // verified user for active session (starts as Guest/null on reload)
-  
-  const [registeredUsers, setRegisteredUsers] = useState(() => {
-    const saved = localStorage.getItem('wc2026_registered_users');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [emails, setEmails] = useState(() => {
-    const saved = localStorage.getItem('wc2026_emails');
-    return saved ? JSON.parse(saved) : [];
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('wc2026_current_user');
+    return saved ? JSON.parse(saved) : null;
   });
 
   // Load predictions from localStorage
@@ -51,20 +52,72 @@ export default function App() {
   // Load or initialize match vote counts for statistics (simulated vote pool)
   const [matchVotes, setMatchVotes] = useState(() => {
     const saved = localStorage.getItem('wc2026_match_votes');
-    if (saved) return JSON.parse(saved);
-
-    const initialVotes = {};
-    MOCK_MATCHES.forEach(m => {
-      const homeBase = Math.floor(Math.random() * 190) + 60;
-      const awayBase = Math.floor(Math.random() * 190) + 60;
-      initialVotes[m.id] = {
-        homeVotes: homeBase,
-        awayVotes: awayBase
-      };
-    });
-    localStorage.setItem('wc2026_match_votes', JSON.stringify(initialVotes));
-    return initialVotes;
+    return saved ? JSON.parse(saved) : {};
   });
+
+  // Fetch real matches on load
+  useEffect(() => {
+    const fetchMatches = async () => {
+      setLoadingMatches(true);
+      setErrorMatches(null);
+      try {
+        const apiData = await getWorldCupMatches();
+        const rawMatches = Array.isArray(apiData) ? apiData : (apiData?.data || []);
+        if (rawMatches.length > 0) {
+          setMatches(rawMatches);
+          
+          // Ensure every match has simulated votes
+          setMatchVotes(prevVotes => {
+            let updated = false;
+            const newVotes = { ...prevVotes };
+            rawMatches.forEach(m => {
+              if (!newVotes[m.id]) {
+                const homeBase = Math.floor(Math.random() * 190) + 60;
+                const awayBase = Math.floor(Math.random() * 190) + 60;
+                newVotes[m.id] = {
+                  homeVotes: homeBase,
+                  awayVotes: awayBase
+                };
+                updated = true;
+              }
+            });
+            if (updated) {
+              localStorage.setItem('wc2026_match_votes', JSON.stringify(newVotes));
+              return newVotes;
+            }
+            return prevVotes;
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching matches in App:', err);
+        setErrorMatches('Failed to load match data');
+      } finally {
+        setLoadingMatches(false);
+      }
+    };
+    fetchMatches();
+  }, []);
+
+  // Fetch user predictions from backend when logged in
+  useEffect(() => {
+    const fetchUserBets = async () => {
+      if (currentUser && currentUser._id) {
+        try {
+          const response = await getUserBets(currentUser._id);
+          if (response && response.status === 'success') {
+            setPredictions(response.data || {});
+            localStorage.setItem('wc2026_predictions', JSON.stringify(response.data || {}));
+          }
+        } catch (err) {
+          console.error("Error fetching user bets from backend:", err);
+        }
+      } else {
+        setPredictions({});
+        localStorage.removeItem('wc2026_predictions');
+      }
+    };
+    fetchUserBets();
+  }, [currentUser]);
 
   // Programmatically generate dates from June 12, 2026, to July 20, 2026
   const availableDates = useMemo(() => {
@@ -118,14 +171,17 @@ export default function App() {
 
   // Get matches for the selected date on the homepage
   const todayMatches = useMemo(() => {
-    return matches.filter(m => m.date === selectedDate);
+    return matches.filter(m => {
+      const { date } = getVnDateTime(m.utcDate);
+      return date === selectedDate;
+    });
   }, [matches, selectedDate]);
 
   // Format date display for empty state
   const formattedSelectedDate = useMemo(() => {
     const [year, month, day] = selectedDate.split('-').map(Number);
     const dateObj = new Date(year, month - 1, day);
-    const weekdays = [
+    const weekdaysFull = [
       'Chủ Nhật',
       'Thứ Hai',
       'Thứ Ba',
@@ -134,38 +190,39 @@ export default function App() {
       'Thứ Sáu',
       'Thứ Bảy'
     ];
-    return `${weekdays[dateObj.getDay()]} - Ngày ${day}/${month}/${year}`;
+    const weekdaysShort = [
+      'CN',
+      'T2',
+      'T3',
+      'T4',
+      'T5',
+      'T6',
+      'T7'
+    ];
+    
+    const dayStr = String(day).padStart(2, '0');
+    const monthStr = String(month).padStart(2, '0');
+    
+    const full = `${weekdaysFull[dateObj.getDay()]} - Ngày ${day}/${month}/${year}`;
+    const short = `${weekdaysShort[dateObj.getDay()]} - ${dayStr}/${monthStr}`;
+    
+    return { full, short };
   }, [selectedDate]);
 
   // Click on a MatchCard on the homepage
   const handleMatchCardClick = (matchId) => {
-    if (currentUser) {
-      // If already verified, allow voting/predicting
+    const match = matches.find(m => m.id === matchId);
+    const isFinished = match?.status === 'FINISHED';
+    const hasPrediction = !!predictions[matchId];
+    
+    if (currentUser || isFinished || hasPrediction) {
+      // Allow viewing prediction details or statistics directly
       setActivePredictMatchId(matchId);
     } else {
-      // If Guest, prompt verification popup first
+      // Prompt verification if the user wants to place a new prediction
       setPendingMatchId(matchId);
       setIsAuthModalOpen(true);
     }
-  };
-
-  // Callback when a user registers from AuthModal
-  const handleRegisterNewUser = (newUser) => {
-    const updatedUsers = [...registeredUsers.filter(u => u.email !== newUser.email), newUser];
-    setRegisteredUsers(updatedUsers);
-    localStorage.setItem('wc2026_registered_users', JSON.stringify(updatedUsers));
-
-    // Send mock email with token
-    const newEmail = {
-      id: Date.now(),
-      to: newUser.email,
-      name: newUser.name,
-      token: newUser.token,
-      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    const updatedEmails = [newEmail, ...emails];
-    setEmails(updatedEmails);
-    localStorage.setItem('wc2026_emails', JSON.stringify(updatedEmails));
   };
 
   // Callback when user successfully verifies their token in AuthModal
@@ -183,40 +240,47 @@ export default function App() {
   // Handle logout
   const handleLogout = () => {
     setCurrentUser(null);
-  };
-
-  // Clear simulated email inbox
-  const handleClearEmails = () => {
-    setEmails([]);
-    localStorage.removeItem('wc2026_emails');
+    localStorage.removeItem('wc2026_current_user');
   };
 
   // Handle predictions submitted from the modal
-  const handleVoteSubmit = (matchId, supportedTeam, homeScore, awayScore, amount) => {
-    const newPrediction = {
-      supportedTeam,
-      homeScore,
-      awayScore,
-      amount,
-      votedAt: new Date().toISOString()
-    };
-    const updatedPredictions = {
-      ...predictions,
-      [matchId]: newPrediction
-    };
-    setPredictions(updatedPredictions);
-    localStorage.setItem('wc2026_predictions', JSON.stringify(updatedPredictions));
+  const handleVoteSubmit = async (matchId, supportedTeam, homeScore, awayScore, amount) => {
+    if (!currentUser || !currentUser._id) {
+      alert("Vui lòng đăng nhập để bình chọn.");
+      return null;
+    }
 
-    const currentVotes = matchVotes[matchId] || { homeVotes: 100, awayVotes: 100 };
-    const updatedVotes = {
-      ...matchVotes,
-      [matchId]: {
-        homeVotes: supportedTeam === 'home' ? currentVotes.homeVotes + 1 : currentVotes.homeVotes,
-        awayVotes: supportedTeam === 'away' ? currentVotes.awayVotes + 1 : currentVotes.awayVotes
+    const matchDetails = matches.find(m => m.id === matchId);
+    const predictedWinner = supportedTeam === 'home' ? 'HOME' : supportedTeam === 'away' ? 'AWAY' : 'DRAW';
+    const predictedScore = { home: homeScore, away: awayScore };
+
+    try {
+      const response = await placeMatchBet(matchId, currentUser._id, predictedWinner, predictedScore, amount, matchDetails);
+      if (response && response.status === 'success') {
+        const updatedMatch = response.data;
+        
+        // Update local predictions state
+        const newPrediction = {
+          supportedTeam,
+          homeScore,
+          awayScore,
+          amount,
+          votedAt: new Date().toISOString()
+        };
+        const updatedPredictions = {
+          ...predictions,
+          [matchId]: newPrediction
+        };
+        setPredictions(updatedPredictions);
+        localStorage.setItem('wc2026_predictions', JSON.stringify(updatedPredictions));
+        
+        return updatedMatch;
       }
-    };
-    setMatchVotes(updatedVotes);
-    localStorage.setItem('wc2026_match_votes', JSON.stringify(updatedVotes));
+    } catch (err) {
+      console.error("Lỗi đặt cược:", err);
+      alert(err.message || "Đã xảy ra lỗi khi gửi bình chọn. Vui lòng thử lại!");
+      throw err;
+    }
   };
 
   // Reset predictions and vote pool to default state
@@ -225,7 +289,7 @@ export default function App() {
     localStorage.removeItem('wc2026_predictions');
 
     const initialVotes = {};
-    MOCK_MATCHES.forEach(m => {
+    matches.forEach(m => {
       const homeBase = Math.floor(Math.random() * 190) + 60;
       const awayBase = Math.floor(Math.random() * 190) + 60;
       initialVotes[m.id] = {
@@ -243,59 +307,67 @@ export default function App() {
   }, [matches, activePredictMatchId]);
 
   // Dynamically calculate standings based ONLY on official finished matches
-  // User predictions DO NOT affect group standings anymore
   const groupStandings = useMemo(() => {
-    const teamsInGroup = GROUPS[selectedGroupStandings] || [];
+    const vnToApiGroup = {
+      'Bảng A': 'GROUP_A', 'Bảng B': 'GROUP_B', 'Bảng C': 'GROUP_C', 'Bảng D': 'GROUP_D',
+      'Bảng E': 'GROUP_E', 'Bảng F': 'GROUP_F', 'Bảng G': 'GROUP_G', 'Bảng H': 'GROUP_H',
+      'Bảng I': 'GROUP_I', 'Bảng J': 'GROUP_J', 'Bảng K': 'GROUP_K', 'Bảng L': 'GROUP_L'
+    };
+    const apiGroupKey = vnToApiGroup[selectedGroupStandings];
+    
     const stats = {};
-
-    teamsInGroup.forEach(teamCode => {
-      stats[teamCode] = {
-        code: teamCode,
-        name: TEAMS[teamCode]?.name || teamCode,
-        flagCode: TEAMS[teamCode]?.flagCode || teamCode,
-        played: 0,
-        won: 0,
-        drawn: 0,
-        lost: 0,
-        goalsFor: 0,
-        goalsAgainst: 0,
-        goalDiff: 0,
-        points: 0
-      };
+    
+    // Filter matches for stage GROUP_STAGE and target group
+    const groupMatches = matches.filter(m => m.stage === 'GROUP_STAGE' && m.group === apiGroupKey);
+    
+    // Register all teams in group matches
+    groupMatches.forEach(match => {
+      [match.homeTeam, match.awayTeam].forEach(team => {
+        if (team && team.name && !stats[team.name]) {
+          stats[team.name] = {
+            name: team.name,
+            crest: team.crest,
+            played: 0,
+            won: 0,
+            drawn: 0,
+            lost: 0,
+            goalsFor: 0,
+            goalsAgainst: 0,
+            goalDiff: 0,
+            points: 0
+          };
+        }
+      });
     });
 
-    matches.forEach(match => {
-      if (match.stage === STAGES.GROUP && match.group === selectedGroupStandings) {
-        const homeCode = match.homeTeam;
-        const awayCode = match.awayTeam;
+    groupMatches.forEach(match => {
+      if (match.status === 'FINISHED') {
+        const homeName = match.homeTeam?.name;
+        const awayName = match.awayTeam?.name;
+        const hScore = match.score?.fullTime?.home;
+        const aScore = match.score?.fullTime?.away;
 
-        if (stats[homeCode] && stats[awayCode]) {
-          // Calculation strictly isolated to officially finished matches
-          if (match.status === 'finished') {
-            const hScore = match.homeScore;
-            const aScore = match.awayScore;
+        if (stats[homeName] && stats[awayName] && typeof hScore === 'number' && typeof aScore === 'number') {
+          stats[homeName].played += 1;
+          stats[awayName].played += 1;
+          stats[homeName].goalsFor += hScore;
+          stats[homeName].goalsAgainst += aScore;
+          stats[awayName].goalsFor += aScore;
+          stats[awayName].goalsAgainst += hScore;
 
-            stats[homeCode].played += 1;
-            stats[awayCode].played += 1;
-            stats[homeCode].goalsFor += hScore;
-            stats[homeCode].goalsAgainst += aScore;
-            stats[awayCode].goalsFor += aScore;
-            stats[awayCode].goalsAgainst += hScore;
-
-            if (hScore > aScore) {
-              stats[homeCode].won += 1;
-              stats[homeCode].points += 3;
-              stats[awayCode].lost += 1;
-            } else if (hScore < aScore) {
-              stats[awayCode].won += 1;
-              stats[awayCode].points += 3;
-              stats[homeCode].lost += 1;
-            } else {
-              stats[homeCode].drawn += 1;
-              stats[homeCode].points += 1;
-              stats[awayCode].drawn += 1;
-              stats[awayCode].points += 1;
-            }
+          if (hScore > aScore) {
+            stats[homeName].won += 1;
+            stats[homeName].points += 3;
+            stats[awayName].lost += 1;
+          } else if (hScore < aScore) {
+            stats[awayName].won += 1;
+            stats[awayName].points += 3;
+            stats[homeName].lost += 1;
+          } else {
+            stats[homeName].drawn += 1;
+            stats[homeName].points += 1;
+            stats[awayName].drawn += 1;
+            stats[awayName].points += 1;
           }
         }
       }
@@ -342,7 +414,7 @@ export default function App() {
               {currentUser ? (
                 <div className="flex items-center space-x-2.5">
                   <img 
-                    src={currentUser.avatarUrl} 
+                    src={currentUser.avatar || currentUser.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.name)}`} 
                     alt={currentUser.name} 
                     className="w-7 h-7 rounded-full object-cover border border-[#c29b38] shadow-sm bg-stone-100" 
                   />
@@ -376,27 +448,19 @@ export default function App() {
                     onClick={() => setIsAuthModalOpen(true)}
                     className="px-3 py-1 bg-[#c29b38] hover:bg-[#d4ac4b] text-stone-950 text-[10px] font-black uppercase rounded-lg transition-colors font-display"
                   >
-                    Xác thực để bầu
+                    Đăng nhập
                   </button>
                 </div>
               )}
             </div>
 
             <button
-              onClick={handleResetSimulation}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl border border-stone-700 bg-[#242d25] text-stone-300 hover:text-white hover:bg-stone-800 transition-all duration-200"
-              title="Khôi phục trạng thái mặc định"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Đặt lại dự đoán</span>
-            </button>
-
-            <button
               onClick={() => setIsModalOpen(true)}
               className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-100 text-stone-800 hover:bg-stone-200 hover:text-stone-900 font-bold rounded-xl shadow-md transition-all duration-200 font-display text-xs"
+              title="Xem Lịch Giải"
             >
               <Calendar className="w-3.5 h-3.5" />
-              Xem Lịch Giải
+              <span className="hidden md:inline">Xem Lịch Giải</span>
             </button>
           </div>
         </div>
@@ -409,11 +473,14 @@ export default function App() {
         <section className="lg:col-span-2 space-y-6">
           <div className="bg-white p-4 rounded-3xl border border-stone-200/80 shadow-sm space-y-4">
             <div className="flex items-center justify-between px-1">
-              <h2 className="text-lg font-bold text-stone-800 flex items-center gap-2 font-display">
-                <span className="w-2.5 h-2.5 rounded bg-[#2d382e]"></span>
-                Lịch đấu theo ngày
+              <h2 className="text-sm md:text-lg font-bold text-stone-800 flex items-center gap-1.5 md:gap-2 font-display">
+                <span className="w-2 md:w-2.5 h-2 md:h-2.5 rounded bg-[#2d382e]"></span>
+                Lịch thi đấu theo ngày
               </h2>
-              <span className="text-xs text-stone-400 font-medium">{formattedSelectedDate}</span>
+              <span className="text-[11px] md:text-xs text-stone-400 font-medium">
+                <span className="hidden sm:inline">{formattedSelectedDate.full}</span>
+                <span className="inline sm:hidden">{formattedSelectedDate.short}</span>
+              </span>
             </div>
 
             {/* Programmatic Dates Slider starting from June 12 */}
@@ -463,7 +530,12 @@ export default function App() {
 
           {/* Matches Panel / Empty State */}
           <div className="space-y-4">
-            {todayMatches.length === 0 ? (
+            {loadingMatches ? (
+              <div className="bg-wc-cream rounded-3xl p-16 border border-stone-200/80 shadow-sm text-center animate-fade-in flex flex-col items-center justify-center">
+                <div className="w-12 h-12 border-4 border-stone-250 border-t-stone-850 rounded-full animate-spin mb-4"></div>
+                <p className="text-sm text-stone-500 font-semibold">Đang tải lịch thi đấu...</p>
+              </div>
+            ) : todayMatches.length === 0 ? (
               <div className="bg-wc-cream rounded-3xl p-16 border border-stone-200/80 shadow-inner text-center animate-fade-in flex flex-col items-center justify-center">
                 <div className="w-16 h-16 rounded-full bg-stone-200/60 border border-stone-300 flex items-center justify-center text-3xl mb-4 text-stone-400">
                   ⚽
@@ -526,7 +598,7 @@ export default function App() {
                 onChange={(e) => setSelectedGroupStandings(e.target.value)}
                 className="text-xs font-bold bg-stone-100 border border-stone-200 px-2.5 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2d382e] text-stone-700"
               >
-                {Object.keys(GROUPS).map((g) => (
+                {GROUPS_LIST.map((g) => (
                   <option key={g} value={g}>{g}</option>
                 ))}
               </select>
@@ -548,7 +620,7 @@ export default function App() {
                   {groupStandings.map((team, index) => {
                     const isTopTwo = index < 2;
                     return (
-                      <tr key={team.code} className="hover:bg-stone-50/50 transition-colors">
+                      <tr key={team.name} className="hover:bg-stone-50/50 transition-colors">
                         <td className="py-3 pl-1 text-center font-bold">
                           <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${
                             isTopTwo ? 'bg-emerald-50 text-emerald-700 text-[10px]' : 'text-stone-400'
@@ -558,7 +630,7 @@ export default function App() {
                         </td>
                         <td className="py-3 font-semibold text-stone-800 font-display flex items-center space-x-2">
                           <img 
-                            src={`https://flagcdn.com/w40/${team.flagCode.toLowerCase()}.png`} 
+                            src={team.crest} 
                             alt={team.name} 
                             className="w-5 h-3.5 object-cover rounded-sm border border-stone-100 shadow-sm flex-shrink-0"
                             onError={(e) => {
@@ -615,6 +687,9 @@ export default function App() {
         realToday={realToday}
         predictions={predictions}
         onMatchClick={handleMatchCardClick}
+        matches={matches}
+        loading={loadingMatches}
+        error={errorMatches}
       />
 
       {/* Interactive Prediction Modal Popup */}
@@ -625,6 +700,7 @@ export default function App() {
         prediction={predictions[activePredictMatchId]}
         votes={matchVotes[activePredictMatchId]}
         onVote={handleVoteSubmit}
+        currentUser={currentUser}
       />
 
       {/* Authentication / Register Modal Popup */}
@@ -634,15 +710,7 @@ export default function App() {
           setIsAuthModalOpen(false);
           setPendingMatchId(null);
         }}
-        registeredUsers={registeredUsers}
         onVerifySuccess={handleVerifySuccess}
-        onRegisterNewUser={handleRegisterNewUser}
-      />
-
-      {/* Floating Simulated Email Client Box */}
-      <MockEmailInbox
-        emails={emails}
-        onClear={handleClearEmails}
       />
     </div>
   );

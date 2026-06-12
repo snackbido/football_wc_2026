@@ -1,61 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, ShieldAlert, Key, Upload, Settings2, UserCheck } from 'lucide-react';
+import { X, UserPlus, Key, Upload, UserCheck } from 'lucide-react';
+import { registerOrLoginUser } from '../services/userService';
 
-// Cloudinary upload helper with local base64 fallback
-const uploadToCloudinary = async (file) => {
-  const cloudName = localStorage.getItem('wc_cloudinary_cloud_name') || '';
-  const uploadPreset = localStorage.getItem('wc_cloudinary_preset') || '';
-  
-  // If credentials aren't configured, fall back to base64 immediately for testing ease
-  if (!cloudName || !uploadPreset) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', uploadPreset);
-  
-  try {
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-      method: 'POST',
-      body: formData
-    });
-    if (response.ok) {
-      const data = await response.json();
-      return data.secure_url;
-    }
-    throw new Error('Upload to Cloudinary failed');
-  } catch (err) {
-    console.warn('Cloudinary upload error, using local base64 instead:', err);
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.readAsDataURL(file);
-    });
-  }
+// Base64 converter helper
+const convertToBase64 = (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
 };
 
-export default function AuthModal({ isOpen, onClose, registeredUsers, onVerifySuccess, onRegisterNewUser }) {
+export default function AuthModal({ isOpen, onClose, onVerifySuccess }) {
   const [activeTab, setActiveTab] = useState('login'); // 'login' or 'register'
   
   // Login states
-  const [selectedUserEmail, setSelectedUserEmail] = useState('');
+  const [loginName, setLoginName] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
   const [loginToken, setLoginToken] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
 
   // Register states
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [registerName, setRegisterName] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [showConfig, setShowConfig] = useState(false);
-  const [cloudName, setCloudName] = useState(localStorage.getItem('wc_cloudinary_cloud_name') || '');
-  const [uploadPreset, setUploadPreset] = useState(localStorage.getItem('wc_cloudinary_preset') || '');
+
 
   // Success screen
   const [verifiedUser, setVerifiedUser] = useState(null);
@@ -66,14 +38,9 @@ export default function AuthModal({ isOpen, onClose, registeredUsers, onVerifySu
       setLoginToken('');
       setLoginError('');
       setVerifiedUser(null);
-      if (registeredUsers.length > 0) {
-        setSelectedUserEmail(registeredUsers[0].email);
-        setActiveTab('login');
-      } else {
-        setActiveTab('register');
-      }
+      setActiveTab('login');
     }
-  }, [isOpen, registeredUsers]);
+  }, [isOpen]);
 
   // Handle avatar file selection preview
   const handleFileChange = (e) => {
@@ -89,68 +56,88 @@ export default function AuthModal({ isOpen, onClose, registeredUsers, onVerifySu
   };
 
   // Login handler
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    setLoginError('');
-    const user = registeredUsers.find(u => u.email === selectedUserEmail);
-    if (!user) {
-      setLoginError('Không tìm thấy tài khoản.');
-      return;
-    }
+    if (!loginName || !loginEmail || !loginToken) return;
 
-    if (user.token.trim().toLowerCase() === loginToken.trim().toLowerCase()) {
-      setVerifiedUser(user);
-      setTimeout(() => {
-        onVerifySuccess(user);
-      }, 1500);
-    } else {
-      setLoginError('Mã Token không chính xác. Vui lòng kiểm tra lại!');
+    setLoginError('');
+    setIsVerifying(true);
+
+    try {
+      const response = await registerOrLoginUser(
+        loginName.trim(),
+        loginEmail.trim(),
+        loginToken.trim()
+      );
+      
+      if (response.status === 'success' && response.data?.type === 'token_match') {
+        const user = response.data.user;
+        setVerifiedUser(user);
+        
+        // Sync local storage for persistent logged-in state if needed
+        localStorage.setItem('wc2026_current_user', JSON.stringify(user));
+        
+        setTimeout(() => {
+          onVerifySuccess(user);
+        }, 1500);
+      } else {
+        setLoginError(response.message || 'Mã Token không chính xác. Vui lòng kiểm tra lại!');
+      }
+    } catch (err) {
+      setLoginError(err.message || 'Xác thực thất bại. Vui lòng kiểm tra thông tin hoặc thử lại!');
+    } finally {
+      setIsVerifying(false);
     }
   };
 
   // Register handler
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
-    if (!name || !email) return;
+    if (!registerName || !registerEmail) return;
 
     setIsUploading(true);
     
-    // Save Cloudinary settings if entered
-    localStorage.setItem('wc_cloudinary_cloud_name', cloudName);
-    localStorage.setItem('wc_cloudinary_preset', uploadPreset);
-
     let avatarUrl = '';
-    if (avatarFile) {
-      avatarUrl = await uploadToCloudinary(avatarFile);
-    } else {
-      // Default initial placeholder avatar
-      avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(name)}`;
+    try {
+      if (avatarFile) {
+        avatarUrl = await convertToBase64(avatarFile);
+      } else {
+        // Default initial placeholder avatar
+        avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(registerName)}`;
+      }
+
+      // Call the register service (sending name, email, and avatar)
+      const response = await registerOrLoginUser(
+        registerName.trim(),
+        registerEmail.trim(),
+        undefined, // Undefined token triggers registration & token email sending
+        avatarUrl
+      );
+
+      if (response.status === 'success' && response.data?.type === 'registered') {
+        // Pre-fill the login fields for the user
+        setLoginName(registerName);
+        setLoginEmail(registerEmail);
+        setLoginToken('');
+        
+        // Reset register fields
+        setRegisterName('');
+        setRegisterEmail('');
+        setAvatarFile(null);
+        setAvatarPreview(null);
+        
+        // Automatically switch to login tab
+        setActiveTab('login');
+        
+        alert(`Đăng ký thành công! Token xác thực đã được gửi tới email ${registerEmail.trim()}.\nHãy copy mã token đó và dán vào phần đăng nhập.`);
+      } else {
+        alert(response.message || 'Đăng ký thất bại. Vui lòng thử lại!');
+      }
+    } catch (err) {
+      alert(err.message || 'Đăng ký thất bại. Email có thể đã tồn tại hoặc có lỗi kết nối!');
+    } finally {
+      setIsUploading(false);
     }
-
-    // Generate random token
-    const generatedToken = `WC26-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    onRegisterNewUser({
-      name,
-      email,
-      avatarUrl,
-      token: generatedToken
-    });
-
-    setIsUploading(false);
-    
-    // Reset fields
-    setName('');
-    setEmail('');
-    setAvatarFile(null);
-    setAvatarPreview(null);
-    
-    // Automatically switch to login tab and select the newly registered user
-    setSelectedUserEmail(email);
-    setActiveTab('login');
-    
-    // Alert user that token has been sent
-    alert(`Đăng ký thành công! Token xác thực đã được gửi tới email ${email}.\nHộp thư giả lập ở góc dưới màn hình đã nhận được token: ${generatedToken}`);
   };
 
   if (!isOpen) return null;
@@ -198,7 +185,10 @@ export default function AuthModal({ isOpen, onClose, registeredUsers, onVerifySu
             {/* Tabs Header */}
             <div className="flex border-b border-stone-200 bg-white">
               <button
-                onClick={() => setActiveTab('login')}
+                onClick={() => {
+                  setActiveTab('login');
+                  setLoginError('');
+                }}
                 className={`flex-1 py-3 text-sm font-bold font-display border-b-2 transition-all ${
                   activeTab === 'login'
                     ? 'border-[#2d382e] text-[#2d382e] bg-stone-50/50'
@@ -208,7 +198,10 @@ export default function AuthModal({ isOpen, onClose, registeredUsers, onVerifySu
                 Xác thực bằng Token
               </button>
               <button
-                onClick={() => setActiveTab('register')}
+                onClick={() => {
+                  setActiveTab('register');
+                  setLoginError('');
+                }}
                 className={`flex-1 py-3 text-sm font-bold font-display border-b-2 transition-all ${
                   activeTab === 'register'
                     ? 'border-[#2d382e] text-[#2d382e] bg-stone-50/50'
@@ -224,82 +217,86 @@ export default function AuthModal({ isOpen, onClose, registeredUsers, onVerifySu
               
               {/* TAB 1: LOGIN / PASS TOKEN */}
               {activeTab === 'login' && (
-                <form onSubmit={handleLoginSubmit} className="space-y-5 animate-fade-in">
+                <form onSubmit={handleLoginSubmit} className="space-y-4 animate-fade-in">
                   
-                  {registeredUsers.length === 0 ? (
-                    <div className="text-center py-6 text-stone-400 space-y-3">
-                      <ShieldAlert className="w-12 h-12 stroke-[1.25] text-stone-300 mx-auto" />
-                      <p className="text-xs font-semibold">Chưa có tài khoản nào trên hệ thống.</p>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('register')}
-                        className="text-xs font-bold text-[#c29b38] underline hover:text-[#d4ac4b]"
-                      >
-                        Đăng ký tài khoản ngay
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Select User Dropdown */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider pl-0.5">
-                          Chọn tên tài khoản của bạn
-                        </label>
-                        <select
-                          value={selectedUserEmail}
-                          onChange={(e) => setSelectedUserEmail(e.target.value)}
-                          className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] font-bold text-stone-850"
-                        >
-                          {registeredUsers.map((u) => (
-                            <option key={u.email} value={u.email}>
-                              {u.name} ({u.email})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                  {/* Name Input */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider pl-0.5">
+                      Họ và tên tài khoản
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Nhập họ tên đăng ký của bạn"
+                      value={loginName}
+                      onChange={(e) => setLoginName(e.target.value)}
+                      required
+                      className="w-full px-4 py-2 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] font-semibold text-stone-850 placeholder-stone-400"
+                    />
+                  </div>
 
-                      {/* Token Input */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider pl-0.5">
-                          Nhập mã Token xác thực
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Mã token (VD: WC26-1234)"
-                          value={loginToken}
-                          onChange={(e) => setLoginToken(e.target.value)}
-                          required
-                          className="w-full px-4 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] font-semibold text-stone-800 placeholder-stone-400"
-                        />
-                      </div>
+                  {/* Email Input */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider pl-0.5">
+                      Địa chỉ Email đăng ký
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="vi_du@email.com"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      required
+                      className="w-full px-4 py-2 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] font-semibold text-stone-850 placeholder-stone-400"
+                    />
+                  </div>
 
-                      {/* Error Indicator */}
-                      {loginError && (
-                        <p className="text-xs font-bold text-red-500 bg-red-50 border border-red-200/50 p-2.5 rounded-xl text-center">
-                          {loginError}
-                        </p>
-                      )}
+                  {/* Token Input */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider pl-0.5">
+                      Mã Token xác thực (WC2026-XXXXXX)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Dán mã token được gửi qua email"
+                      value={loginToken}
+                      onChange={(e) => setLoginToken(e.target.value)}
+                      required
+                      className="w-full px-4 py-2 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] font-bold text-stone-800 placeholder-stone-400"
+                    />
+                  </div>
 
-                      {/* Hint warning */}
-                      <p className="text-[10px] text-stone-400 leading-relaxed text-center font-medium">
-                        * Bạn chỉ cần nhập mã token được gửi qua email ở lần đăng ký đầu tiên để xác thực và tiến hành bình chọn.
-                      </p>
-
-                      {/* Submit */}
-                      <button
-                        type="submit"
-                        className="w-full py-2.5 px-4 bg-[#2d382e] text-[#c29b38] hover:bg-[#1f2720] font-bold rounded-2xl shadow transition-colors font-display text-xs uppercase tracking-wider"
-                      >
-                        Xác nhận xác thực
-                      </button>
-                    </>
+                  {/* Error Indicator */}
+                  {loginError && (
+                    <p className="text-xs font-bold text-red-500 bg-red-50 border border-red-200/50 p-2.5 rounded-xl text-center">
+                      {loginError}
+                    </p>
                   )}
+
+                  {/* Hint warning */}
+                  <p className="text-[10px] text-stone-400 leading-relaxed text-center font-medium">
+                    * Token xác thực được cấp một lần duy nhất và tồn tại vĩnh viễn giúp bạn đăng nhập bất cứ khi nào.
+                  </p>
+
+                  {/* Submit */}
+                  <button
+                    type="submit"
+                    disabled={isVerifying}
+                    className="w-full py-2.5 px-4 bg-[#2d382e] text-[#c29b38] hover:bg-[#1f2720] disabled:bg-stone-200 disabled:text-stone-400 font-bold rounded-2xl shadow transition-colors font-display text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                  >
+                    {isVerifying ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-stone-400 border-t-stone-850 rounded-full animate-spin"></div>
+                        <span>Đang xác thực...</span>
+                      </>
+                    ) : (
+                      <span>Xác nhận đăng nhập</span>
+                    )}
+                  </button>
                 </form>
               )}
 
               {/* TAB 2: REGISTER */}
               {activeTab === 'register' && (
-                <form onSubmit={handleRegisterSubmit} className="space-y-4.5 animate-fade-in">
+                <form onSubmit={handleRegisterSubmit} className="space-y-4 animate-fade-in">
                   
                   {/* Name Input */}
                   <div className="space-y-1.5">
@@ -309,10 +306,10 @@ export default function AuthModal({ isOpen, onClose, registeredUsers, onVerifySu
                     <input
                       type="text"
                       placeholder="Nhập đầy đủ họ tên"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      value={registerName}
+                      onChange={(e) => setRegisterName(e.target.value)}
                       required
-                      className="w-full px-4 py-2 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] font-semibold text-stone-800"
+                      className="w-full px-4 py-2 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] font-semibold text-stone-800 placeholder-stone-400"
                     />
                   </div>
 
@@ -324,10 +321,10 @@ export default function AuthModal({ isOpen, onClose, registeredUsers, onVerifySu
                     <input
                       type="email"
                       placeholder="vi_du@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      value={registerEmail}
+                      onChange={(e) => setRegisterEmail(e.target.value)}
                       required
-                      className="w-full px-4 py-2 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] font-semibold text-stone-800"
+                      className="w-full px-4 py-2 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d382e] font-semibold text-stone-800 placeholder-stone-400"
                     />
                   </div>
 
@@ -359,47 +356,7 @@ export default function AuthModal({ isOpen, onClose, registeredUsers, onVerifySu
                     </div>
                   </div>
 
-                  {/* Collapsible Cloudinary Configuration */}
-                  <div className="border border-stone-200 rounded-xl overflow-hidden bg-white">
-                    <button
-                      type="button"
-                      onClick={() => setShowConfig(!showConfig)}
-                      className="w-full flex items-center justify-between px-3 py-2 bg-stone-50 text-stone-600 hover:text-stone-800 text-[10px] font-bold uppercase tracking-wider border-b border-stone-100"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <Settings2 className="w-3.5 h-3.5 text-stone-400" />
-                        Cấu hình Cloudinary (Tùy chọn)
-                      </span>
-                      <span>{showConfig ? 'Ẩn' : 'Hiện'}</span>
-                    </button>
-                    {showConfig && (
-                      <div className="p-3 space-y-2.5 animate-fade-in bg-stone-50/30">
-                        <div className="space-y-1">
-                          <span className="text-[9px] font-bold text-stone-400 uppercase">Cloud Name</span>
-                          <input
-                            type="text"
-                            placeholder="Nhập Cloud Name"
-                            value={cloudName}
-                            onChange={(e) => setCloudName(e.target.value)}
-                            className="w-full px-2.5 py-1 text-xs bg-white border border-stone-200 rounded-lg focus:outline-none"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <span className="text-[9px] font-bold text-stone-400 uppercase">Upload Preset (Unsigned)</span>
-                          <input
-                            type="text"
-                            placeholder="Nhập Upload Preset"
-                            value={uploadPreset}
-                            onChange={(e) => setUploadPreset(e.target.value)}
-                            className="w-full px-2.5 py-1 text-xs bg-white border border-stone-200 rounded-lg focus:outline-none"
-                          />
-                        </div>
-                        <p className="text-[9px] text-stone-400 leading-normal font-medium">
-                          * Để trống để sử dụng chế độ local fallback lưu trực tiếp avatar base64 trong trình duyệt (khuyên dùng để thử nghiệm nhanh).
-                        </p>
-                      </div>
-                    )}
-                  </div>
+
 
                   {/* Submit / Loading */}
                   <button
