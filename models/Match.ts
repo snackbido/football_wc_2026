@@ -57,8 +57,8 @@ const BetSchema: Schema = new Schema({
   betAmount: {
     type: Number,
     required: true,
-    min: [5, "Mức cược tối thiểu là 5"],
-    max: [50, "Mức cược tối đa là 50"],
+    min: [5000, "Mức cược tối thiểu là 5.000đ"],
+    max: [50000, "Mức cược tối đa là 50.000đ"],
   },
   betTime: {
     type: Date,

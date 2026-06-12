@@ -26,7 +26,7 @@ const UserSchema: Schema = new Schema(
     },
     avatar: {
       type: String,
-      default: "default-avatar.png",
+      default: "https://res.cloudinary.com/dyp4yk66w/image/upload/v1781253311/wc2026/simple-user-default-icon-free-png_gb6ig7.png",
     },
     token: {
       type: String,

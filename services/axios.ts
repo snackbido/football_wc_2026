@@ -28,3 +28,13 @@ export const getMatchHead2Head = async (matchId: string) => {
     throw new Error("Không thể lấy dữ liệu thành tích đối đầu từ API bóng đá.");
   }
 };
+
+export const getMatchById = async (matchId: number | string) => {
+  try {
+    const response = await footballApi.get(`/matches/${matchId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Lỗi khi lấy trận đấu ${matchId}:`, error);
+    throw new Error("Không thể lấy dữ liệu trận đấu");
+  }
+};

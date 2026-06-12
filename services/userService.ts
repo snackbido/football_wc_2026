@@ -1,5 +1,6 @@
 import { User, IUser } from "../models/User";
 import { sendTokenEmail } from "./emailService";
+import { uploadImageToCloudinary } from "./cloudinaryService";
 
 // ─────────────────────────────────────────────────────
 //  HELPER: Sinh token theo format WC2026-XXXXXX
@@ -36,7 +37,8 @@ export type RegisterResult =
 export const registerOrVerifyUser = async (
   name: string,
   email: string,
-  tokenInput?: string
+  tokenInput?: string,
+  avatarUrl?: string
 ): Promise<RegisterResult> => {
   const normEmail = email.trim().toLowerCase();
   const normName  = name.trim();
@@ -51,10 +53,21 @@ export const registerOrVerifyUser = async (
     // Gửi email trước; nếu lỗi email thì không lưu DB
     await sendTokenEmail(normEmail, normName, newToken);
 
+    let finalAvatar = avatarUrl || "default-avatar.png";
+    if (avatarUrl && avatarUrl.startsWith("data:image/")) {
+      try {
+        finalAvatar = await uploadImageToCloudinary(avatarUrl);
+      } catch (cloudinaryErr: any) {
+        console.warn("Cloudinary upload failed during registration, using base64 fallback:", cloudinaryErr.message);
+        finalAvatar = avatarUrl;
+      }
+    }
+
     const newUser = await User.create({
       name:  normName,
       email: normEmail,
       token: newToken,
+      avatar: finalAvatar,
     });
 
     return {

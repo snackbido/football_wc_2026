@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import { registerOrVerifyUser, getLeaderboard } from "../services/userService";
+import { Match } from "../models/Match";
+import { uploadImageToCloudinary } from "../services/cloudinaryService";
 
 const userRouter = Router();
 
@@ -29,7 +31,7 @@ userRouter.get("/leaderboard", async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────
 userRouter.post("/register", async (req: Request, res: Response) => {
   try {
-    const { name, email, token } = req.body;
+    const { name, email, token, avatar } = req.body;
 
     // Validate đầu vào
     if (!name || typeof name !== "string" || name.trim() === "") {
@@ -49,7 +51,8 @@ userRouter.post("/register", async (req: Request, res: Response) => {
     const result = await registerOrVerifyUser(
       name.trim(),
       email.trim(),
-      token?.trim()
+      token?.trim(),
+      avatar?.trim()
     );
 
     if (result.status === "registered") {
@@ -102,6 +105,48 @@ const sanitizeUser = (user: any) => ({
   email:   user.email,
   avatar:  user.avatar,
   balance: user.balance,
+});
+
+// GET /api/users/:userId/bets
+userRouter.get("/:userId/bets", async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const matches = await Match.find({ "bets.userId": userId });
+    
+    const predictionsMap: Record<number, any> = {};
+    matches.forEach(m => {
+      const userBet = m.bets.find((b: any) => b.userId.toString() === userId);
+      if (userBet) {
+        predictionsMap[m.apiMatchId] = {
+          supportedTeam: userBet.predictedWinner === "HOME" ? "home" : "away",
+          homeScore: userBet.predictedScore.home,
+          awayScore: userBet.predictedScore.away,
+          amount: userBet.betAmount,
+          votedAt: userBet.betTime
+        };
+      }
+    });
+
+    res.json({ status: "success", data: predictionsMap });
+  } catch (error: any) {
+    res.status(500).json({ status: "fail", message: error.message });
+  }
+});
+
+// POST /api/users/upload
+userRouter.post("/upload", async (req: Request, res: Response) => {
+  try {
+    const { image } = req.body;
+    if (!image) {
+      res.status(400).json({ status: "fail", message: "Trường 'image' là bắt buộc (base64 Data URL)." });
+      return;
+    }
+    
+    const imageUrl = await uploadImageToCloudinary(image);
+    res.json({ status: "success", data: { url: imageUrl } });
+  } catch (error: any) {
+    res.status(500).json({ status: "fail", message: error.message });
+  }
 });
 
 export default userRouter;

@@ -37,7 +37,7 @@ export const sendTokenEmail = async (
   const transporter = createTransporter();
 
   await transporter.sendMail({
-    from: `"WC2026 Football App" <${process.env.EMAIL_USER}>`,
+    from: `"WC2026 Football App"`,
     to: toEmail,
     subject: "🏆 Mã Token Đăng Ký WC2026 Của Bạn",
     html: `
