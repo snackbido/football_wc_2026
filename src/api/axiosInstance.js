@@ -1,10 +1,9 @@
-import axios from 'axios';
+import axios from "axios";
 
 const axiosInstance = axios.create({
-  baseURL: 'https://api.football-data.org/v4',
+  baseURL: "http://localhost:5000/api",
   headers: {
-    'X-Auth-Token': 'f7f5889d647b4383b112a37d3457ea89',
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
