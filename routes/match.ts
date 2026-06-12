@@ -155,8 +155,8 @@ matchRouter.post("/:id/bet", async (req: Request, res: Response) => {
     if (diffMs <= 2 * 60 * 1000) {
       return res.status(400).json({ status: "error", message: "Cổng bình chọn đã khóa (đóng trước trận đấu 2 phút)." });
     }
-    if (diffHours > 12) {
-      return res.status(400).json({ status: "error", message: "Cổng bình chọn chưa mở (chỉ mở trước trận đấu 12 tiếng)." });
+    if (diffHours > 24) {
+      return res.status(400).json({ status: "error", message: "Cổng bình chọn chưa mở (chỉ mở trước trận đấu 24 tiếng)." });
     }
 
     match.bets.push({
@@ -318,22 +318,30 @@ matchRouter.get("/:id/ai-analyze", async (req: Request, res: Response) => {
     const awayName = dbMatch.awayTeam.name || aggregates.awayTeam.name || "Đội Khách";
 
     const prompt = `
-      Bạn là một chuyên gia phân tích bóng đá. Hãy phân tích ngắn gọn trận đấu sắp tới giữa ${homeName} và ${awayName} dựa trên dữ liệu đối đầu lịch sử (Head-to-Head) sau:
+      Bạn là một chuyên gia phân tích bóng đá hàng đầu. Hãy phân tích ngắn gọn trận đấu sắp tới giữa hai đội tuyển quốc gia: ${homeName} và ${awayName}.
+      
+      Dữ liệu đối đầu lịch sử (Head-to-Head):
       - Tổng số trận đã gặp nhau: ${aggregates.numberOfMatches} trận.
       - Tổng số bàn thắng đã ghi: ${aggregates.totalGoals} bàn.
       - Thành tích của ${homeName}: Thắng ${aggregates.homeTeam.wins}, Hòa ${aggregates.homeTeam.draws}, Thua ${aggregates.homeTeam.losses}.
       - Thành tích của ${awayName}: Thắng ${aggregates.awayTeam.wins}, Hòa ${aggregates.awayTeam.draws}, Thua ${aggregates.awayTeam.losses}.
       
       Yêu cầu phân tích:
-      1. Đánh giá ngắn gọn xem đội nào đang có lợi thế lịch sử.
-      2. Đưa ra 1 lời khuyên vui vẻ, lôi cuốn cho người dùng.
-      Viết ngắn gọn, dưới 100 từ, sử dụng các gạch đầu dòng rõ ràng.
+      1. Tự ước lượng và phân tích tổng quan giá trị đội hình (squad market value), tương quan lực lượng, nhân sự và sức mạnh hiện tại của hai đội tuyển quốc gia ${homeName} và ${awayName}.
+      2. Đánh giá lợi thế lịch sử đối đầu.
+      3. Kết hợp cả hai yếu tố (giá trị đội hình/tương quan lực lượng thực tế + lịch sử đối đầu H2H) để đưa ra dự đoán tỷ lệ chiến thắng (homeChance và awayChance) sát nhất với thực tế của hai đội.
+      4. Đưa ra một lời khuyên lôi cuốn, vui vẻ cho người dùng khi tham gia bình chọn.
       
-      Hãy ước lượng tỷ lệ phần trăm chiến thắng của hai đội (phải là số nguyên, tổng 2 tỷ lệ không vượt quá 100% - ví dụ: homeChance: 55, awayChance: 45).
+      Quy cách viết phần "analysis":
+      - Viết ngắn gọn, súc tích (dưới 150 từ), sử dụng tiếng Việt.
+      - Trình bày dạng các gạch đầu dòng rõ ràng.
+      - Phải nêu rõ tương quan giá trị đội hình và sức mạnh của 2 đội tuyển.
+      
+      Ước lượng tỷ lệ phần trăm chiến thắng của hai đội (homeChance và awayChance phải là số nguyên, tổng 2 tỷ lệ không vượt quá 100%).
       
       Trả về kết quả duy nhất ở định dạng JSON sau:
       {
-        "analysis": "nội dung phân tích bằng tiếng Việt dạng các gạch đầu dòng",
+        "analysis": "nội dung phân tích bằng tiếng Việt dạng các gạch đầu dòng (bao gồm phân tích tương quan giá trị đội hình và lịch sử đối đầu)",
         "homeChance": 55,
         "awayChance": 45
       }
